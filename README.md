@@ -319,9 +319,6 @@ svg{display:block}
         <div class="nm" id="meName"></div>
         <div class="st">● онлайн</div>
       </div>
-      <button class="icon-btn" id="renameBtn" title="Иваз кардани ном" aria-label="Иваз кардани ном">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
-      </button>
       <button class="icon-btn" id="logoutBtn" title="Баромадан аз ҳисоб" aria-label="Баромадан">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       </button>
@@ -414,6 +411,7 @@ svg{display:block}
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
   import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+  import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyDVEziZjjnuo64PF7gyMSt4GnJADS4JCao",
@@ -427,6 +425,7 @@ svg{display:block}
 
   const firebaseApp = initializeApp(firebaseConfig);
   const auth = getAuth(firebaseApp);
+  const db = getFirestore(firebaseApp);
 
   const authScreen = document.getElementById('authScreen');
   const appScreen = document.getElementById('app');
@@ -468,30 +467,48 @@ svg{display:block}
   });
 
   logoutBtn.addEventListener('click', async () => {
-    if (confirm.call(window, 'Мехоҳед аз ҳисоб бароед?')) {
+    if (confirm('Мехоҳед аз ҳисоб бароед?')) {
       await signOut(auth);
     }
   });
+
+  // Рӯйхати мустақили чатҳо (Ҳоло ҳамаи чатҳои пештараи сунъӣ тоза карда шуданд ва динамикӣ мешаванд)
+  let CONTACTS = [];
+  let state = { chats: {}, unread: {} };
+  let activeId = null;
+  let typing = {};
+  let pendingImage = null;
 
   onAuthStateChanged(auth, (user) => {
     if (user) {
       authScreen.style.display = 'none';
       appScreen.style.display = 'grid';
-      // Нишон додани номи почта ба сифати номи корбар
-      document.getElementById('meName').textContent = user.email.split('@')[0];
-      document.getElementById('meAv').src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#6366f1"/><text x="50" y="50" text-anchor="middle" dominant-baseline="central" font-size="46" fill="#fff">' + user.email.charAt(0).toUpperCase() + '</text></svg>');
+      
+      // Намоиши номи корбар аз Email
+      let username = user.email.split('@')[0];
+      document.getElementById('meName').textContent = username;
+      document.getElementById('meAv').src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#6366f1"/><text x="50" y="50" text-anchor="middle" dominant-baseline="central" font-size="46" fill="#fff">' + username.charAt(0).toUpperCase() + '</text></svg>');
+
+      // Ҳар касе ки ворид мешавад ё сабти ном мекунад, ба таври автоматӣ ба рӯйхати чатҳо илова мешавад (барои тест бо худ ё дигарон)
+      CONTACTS = [
+        { id: user.uid, name: username + ' (Худатон)', hue: 238, online: true, replies: ['Салом! Паёми худро гирифтам ✓'] }
+      ];
+
+      startApp();
     } else {
       authScreen.style.display = 'grid';
       appScreen.style.display = 'none';
     }
   });
-</script>
 
-<script>
-(function () {
-  'use strict';
+  function startApp() {
+    renderList();
+    if (CONTACTS.length > 0) openChat(CONTACTS[0].id);
+    document.getElementById('app').classList.add('appear');
+  }
+
+  // Функсияҳои боқимондаи чат
   var $ = function (s) { return document.querySelector(s); };
-  var KEY = 'choti_olijanob_v1';
   var ICON_MIC = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>';
   var ICON_SEND = '<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M3.4 20.4 21 12 3.4 3.6 3.3 10l12.6 2-12.6 2z"/></svg>';
   var ICON_PLAY = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5z"/></svg>';
@@ -508,7 +525,6 @@ svg{display:block}
     var d = new Date(ts);
     return pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear();
   }
-  function hash(str) { var h = 0; for (var i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return Math.abs(h); }
   function avatar(name, hue) {
     var ch = (name.trim().charAt(0) || '?').toUpperCase();
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">' +
@@ -518,89 +534,16 @@ svg{display:block}
       '<text x="50" y="50" text-anchor="middle" dominant-baseline="central" font-family="Arial,sans-serif" font-size="46" font-weight="700" fill="#fff">' + ch + '</text></svg>';
     return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   }
-  var toastTimer;
+
   function toast(msg) {
     var t = $('#toast'); t.textContent = msg; t.classList.add('show');
-    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove('show'); }, 3200);
+    setTimeout(function () { t.classList.remove('show'); }, 3200);
   }
-  function rand(a, b) { return a + Math.random() * (b - a); }
-  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-  var CONTACTS = [
-    { id: 'rustam', name: 'Рустам Ҷалолов', hue: 238, online: true,
-      replies: ['Салом! Чӣ хел ҳастӣ?', 'Хеле хуб, ташаккур!', 'Ҳа, розӣ ҳастам 👍', 'Ин ғояи олӣ аст!', 'Баъдтар сӯҳбат мекунем, ҳозир каме банд ҳастам.', 'Ҳаҳа, ин хандаовар буд 😄'] },
-    { id: 'nilufar', name: 'Нилуфар', hue: 320, online: true,
-      replies: ['Ассалом! Рӯзат ба хайр 🌸', 'Чӣ хабар? Ҳама хуб аст?', 'Воқеан? Ин ҷолиб аст!', 'Ман ҳам ҳамин тавр фикр мекардам.', 'Ташаккури зиёд ✨'] },
-    { id: 'firdavs', name: 'Фирдавс Назаров', hue: 190, online: true,
-      replies: ['Ҳа, мешавад.', 'Биё, фардо вомехӯрем!', 'Лоиҳа тақрибан тайёр аст.', 'Ҳамааш дуруст пеш меравад 🚀', 'Ман инро санҷида мебинам.'] },
-    { id: 'mehrgon', name: 'Меҳргон', hue: 155, online: false, seen: 'Дирӯз соати 22:14 буд', replies: [] },
-    { id: 'team', name: 'Гурӯҳи дӯстон', hue: 265, online: true,
-      replies: ['Салом ба ҳама! 🎉', 'Кӣ имшаб омода аст?', 'Ман розӣ ҳастам!', 'Пешниҳоди хуб, дастгирӣ мекунам.'] }
-  ];
-  CONTACTS.forEach(function (c) { c.avatar = avatar(c.name, c.hue); });
   function byId(id) { for (var i = 0; i < CONTACTS.length; i++) if (CONTACTS[i].id === id) return CONTACTS[i]; return null; }
-
-  var state = { name: 'Ман', chats: {}, unread: {} };
-  var activeId = null;
-  var typing = {};
-  var pendingImage = null;
-
-  var STORE = KEY + ':main';
-  function load() {
-    try {
-      var s = JSON.parse(localStorage.getItem(STORE));
-      if (s && typeof s === 'object') {
-        state.chats = s.chats || {};
-        state.unread = s.unread || {};
-      }
-    } catch (e) {}
-  }
-  function save() {
-    try { localStorage.setItem(STORE, JSON.stringify({ chats: state.chats, unread: state.unread })); return; } catch (e) {}
-    try {
-      var lite = { unread: state.unread, chats: {} };
-      Object.keys(state.chats).forEach(function (k) {
-        lite.chats[k] = state.chats[k].map(function (m) {
-          if (m.type === 'text') return m;
-          var c = {}; for (var p in m) c[p] = m[p]; c.src = null; return c;
-        });
-      });
-      localStorage.setItem(STORE, JSON.stringify(lite));
-    } catch (e2) {}
-  }
   function msgs(id) { return state.chats[id] || (state.chats[id] = []); }
   function lastMsg(id) { var a = state.chats[id]; return a && a.length ? a[a.length - 1] : null; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
-
-  function seed() {
-    var has = false;
-    CONTACTS.forEach(function (c) { if (state.chats[c.id] && state.chats[c.id].length) has = true; });
-    if (has) return;
-    var now = Date.now();
-    function add(id, text, ago, unread) {
-      msgs(id).push({ id: uid(), from: 'them', type: 'text', text: text, ts: now - ago });
-      if (unread) state.unread[id] = (state.unread[id] || 0) + 1;
-    }
-    add('rustam', 'Салом! Хуш омадӣ ба Чоти Олиҷаноб 👋', 4 * 60e3, true);
-    add('rustam', 'Биё як чизе нависем!', 3 * 60e3, true);
-    add('nilufar', 'Ассалом! Рӯзат ба хайр 🌸', 52 * 60e3, true);
-    add('firdavs', 'Лоиҳаро дидӣ? Хеле зебо шудааст.', 3 * 36e5, false);
-    add('mehrgon', 'Фардо бо ҳам сӯҳбат мекунем.', 26 * 36e5, false);
-    add('team', 'Имшаб кӣ меояд?', 40 * 60e3, true);
-    save();
-  }
-
-  function startApp() {
-    seed();
-    save();
-    var first = CONTACTS.slice().sort(function (a, b) {
-      var la = lastMsg(a.id), lb = lastMsg(b.id);
-      return (lb ? lb.ts : 0) - (la ? la.ts : 0);
-    })[0];
-    renderList();
-    if (first) openChat(first.id);
-    $('#app').classList.add('appear');
-  }
 
   var listEl = $('#list'), searchEl = $('#searchInput');
   searchEl.addEventListener('input', renderList);
@@ -608,39 +551,24 @@ svg{display:block}
   function previewText(m) {
     if (!m) return 'Паём нест';
     var p = m.from === 'me' ? 'Шумо: ' : '';
-    if (m.type === 'image') return p + '📷 Акс' + (m.text ? ' · ' + m.text : '');
+    if (m.type === 'image') return p + '📷 Акс';
     if (m.type === 'voice') return p + '🎤 Паёми овозӣ';
     return p + m.text;
   }
+
   function renderList() {
     var q = searchEl.value.trim().toLowerCase();
     var items = CONTACTS.filter(function (c) { return !q || c.name.toLowerCase().indexOf(q) !== -1; });
-    items.sort(function (a, b) {
-      var la = lastMsg(a.id), lb = lastMsg(b.id);
-      return (lb ? lb.ts : 0) - (la ? la.ts : 0);
-    });
     listEl.innerHTML = '';
-    if (!items.length) {
-      var e = document.createElement('div'); e.className = 'empty-list'; e.textContent = 'Ҳеҷ чиз ёфт нашуд'; listEl.appendChild(e); return;
-    }
     items.forEach(function (c) {
+      c.avatar = avatar(c.name, c.hue || 200);
       var m = lastMsg(c.id), un = state.unread[c.id] || 0;
       var b = document.createElement('button');
       b.className = 'chat-item' + (c.id === activeId ? ' active' : '');
       b.innerHTML =
-        '<div class="av"><img alt=""><span class="dot' + (c.online ? ' on' : '') + '"></span></div>' +
-        '<div class="ci-body"><div class="ci-top"><span class="ci-name"></span><span class="ci-time"></span></div>' +
-        '<div class="ci-bot"><span class="ci-last"></span></div></div>';
-      b.querySelector('img').src = c.avatar;
-      b.querySelector('.ci-name').textContent = c.name;
-      b.querySelector('.ci-time').textContent = m ? hhmm(m.ts) : '';
-      var last = b.querySelector('.ci-last');
-      if (typing[c.id]) { last.className = 'ci-last typing'; last.innerHTML = 'менависад<span class="dots"><i></i><i></i><i></i></span>'; }
-      else last.textContent = previewText(m);
-      if (un > 0) {
-        var bd = document.createElement('span'); bd.className = 'badge'; bd.textContent = un > 99 ? '99+' : un;
-        b.querySelector('.ci-bot').appendChild(bd);
-      }
+        '<div class="av"><img src="' + c.avatar + '"><span class="dot on"></span></div>' +
+        '<div class="ci-body"><div class="ci-top"><span class="ci-name">' + c.name + '</span><span class="ci-time">' + (m ? hhmm(m.ts) : '') + '</span></div>' +
+        '<div class="ci-bot"><span class="ci-last">' + previewText(m) + '</span></div></div>';
       b.addEventListener('click', function () { openChat(c.id); });
       listEl.appendChild(b);
     });
@@ -650,463 +578,79 @@ svg{display:block}
   var inputEl = $('#input'), mainBtn = $('#mainBtn');
 
   function openChat(id) {
-    if (activeId !== id) { stopAudio(); clearPending(); inputEl.value = ''; autoGrow(); updateMainBtn(); emojiPanel.classList.remove('show'); closeMenu(); }
     activeId = id;
-    state.unread[id] = 0; save();
+    state.unread[id] = 0;
     var c = byId(id);
     chatHead.style.display = 'flex';
     composer.style.display = 'block';
-    autoGrow();
     $('#chAv').src = c.avatar;
     $('#chName').textContent = c.name;
-    $('#chDot').className = 'dot' + (c.online ? ' on' : '');
-    updateStatus();
+    $('#chStatus').textContent = 'онлайн';
     $('#app').classList.add('chat-open');
     renderMessages();
     renderList();
-    if (window.innerWidth > 820) inputEl.focus();
   }
+
   $('#backBtn').addEventListener('click', function () {
     $('#app').classList.remove('chat-open');
     activeId = null;
-    stopAudio();
     renderList();
   });
 
-  function updateStatus() {
-    if (!activeId) return;
-    var c = byId(activeId), s = $('#chStatus');
-    if (typing[activeId]) { s.className = 'ch-status typing'; s.innerHTML = 'менависад<span class="dots"><i></i><i></i><i></i></span>'; }
-    else if (c.online) { s.className = 'ch-status on'; s.textContent = 'онлайн'; }
-    else { s.className = 'ch-status'; s.textContent = c.seen || 'оффлайн'; }
-  }
-
   function renderMessages() {
     messagesEl.innerHTML = '';
-    var arr = msgs(activeId), prev = null;
+    var arr = msgs(activeId);
     if (!arr.length) {
-      var p = document.createElement('div'); p.className = 'placeholder';
-      p.innerHTML = '<div style="font-size:15px">Ҳоло паём нест. Аввалин шуда нависед 👋</div>';
-      messagesEl.appendChild(p);
+      messagesEl.innerHTML = '<div class="placeholder"><div style="font-size:15px">Ҳоло паём нест. Аввалин шуда нависед 👋</div></div>';
+      return;
     }
     arr.forEach(function (m) {
-      if (!prev || dayKey(prev.ts) !== dayKey(m.ts)) addDay(m.ts);
-      messagesEl.appendChild(buildMsg(m, false));
-      prev = m;
+      messagesEl.appendChild(buildMsg(m));
     });
-    scrollDown(true);
-    newCount = 0; updateToBottom();
-  }
-  function addDay(ts) {
-    var d = document.createElement('div'); d.className = 'day'; d.textContent = dayLabel(ts); messagesEl.appendChild(d);
-  }
-  function scrollDown(instant) {
-    if (instant) { var sb = messagesEl.style.scrollBehavior; messagesEl.style.scrollBehavior = 'auto'; messagesEl.scrollTop = messagesEl.scrollHeight; messagesEl.style.scrollBehavior = sb; }
-    else messagesEl.scrollTop = messagesEl.scrollHeight;
+    messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
-  function bars(id, n) {
-    var h = hash(id), out = [];
-    for (var i = 0; i < n; i++) { h = (h * 1103515245 + 12345) & 0x7fffffff; out.push(18 + (h % 82)); }
-    return out;
-  }
-
-  function buildMsg(m, animate) {
+  function buildMsg(m) {
     var row = document.createElement('div');
     row.className = 'row ' + (m.from === 'me' ? 'me' : 'them');
-    row.dataset.id = m.id;
-    if (animate === false) row.style.animation = 'none';
     var b = document.createElement('div');
-    b.className = 'bubble' + (m.type === 'image' ? ' media' : '');
-    var isMe = m.from === 'me';
-    var contact = activeId ? byId(activeId) : null;
-    var tick = isMe ? '<span class="tick">' + ((contact && contact.online) ? '✓✓' : '✓') + '</span>' : '';
-
-    if (m.type === 'text') {
-      var t = document.createElement('div'); t.className = 'txt'; t.textContent = m.text; b.appendChild(t);
-    } else if (m.type === 'image') {
-      if (m.src) {
-        var img = document.createElement('img'); img.className = 'pic'; img.src = m.src; img.alt = 'Акс';
-        img.addEventListener('click', function () { openLightbox(m.src); });
-        b.appendChild(img);
-      } else {
-        var ms = document.createElement('div'); ms.className = 'missing'; ms.textContent = '🖼 Акс (дар хотира нест)'; b.appendChild(ms);
-      }
-      if (m.text) { var cp = document.createElement('div'); cp.className = 'cap txt'; cp.textContent = m.text; b.appendChild(cp); }
-    } else if (m.type === 'voice') {
-      b.appendChild(buildVoice(m));
-    }
-    var meta = document.createElement('div'); meta.className = 'meta';
-    meta.innerHTML = '<span>' + hhmm(m.ts) + '</span>' + tick;
-    b.appendChild(meta);
+    b.className = 'bubble';
+    b.innerHTML = '<div class="txt">' + m.text + '</div><div class="meta"><span>' + hhmm(m.ts) + '</span></div>';
     row.appendChild(b);
     return row;
   }
 
-  var curAudio = null, curReset = null;
-  function stopAudio() {
-    if (curAudio) { try { curAudio.pause(); } catch (e) {} }
-    if (curReset) curReset();
-    curAudio = null; curReset = null;
-  }
-  function buildVoice(m) {
-    var wrap = document.createElement('div'); wrap.className = 'voice';
-    var btn = document.createElement('button'); btn.className = 'play'; btn.innerHTML = ICON_PLAY; btn.setAttribute('aria-label', 'Пахш');
-    var wave = document.createElement('div'); wave.className = 'wave';
-    var hs = bars(m.id, 28), bs = [];
-    hs.forEach(function (h) { var i = document.createElement('i'); i.style.height = h + '%'; wave.appendChild(i); bs.push(i); });
-    var dur = document.createElement('span'); dur.className = 'vdur'; dur.textContent = fmtDur(m.dur || 0);
-    wrap.appendChild(btn); wrap.appendChild(wave); wrap.appendChild(dur);
-    if (!m.src) { btn.disabled = true; btn.style.opacity = '.4'; return wrap; }
-
-    var audio = null;
-    function reset() {
-      btn.innerHTML = ICON_PLAY; bs.forEach(function (i) { i.classList.remove('f'); }); dur.textContent = fmtDur(m.dur || 0);
-    }
-    function progress() {
-      var total = m.dur || audio.duration || 1;
-      var p = Math.min(1, audio.currentTime / total);
-      var n = Math.round(p * bs.length);
-      bs.forEach(function (i, k) { i.classList.toggle('f', k < n); });
-      dur.textContent = fmtDur(audio.currentTime);
-    }
-    btn.addEventListener('click', function () {
-      if (audio && curAudio === audio && !audio.paused) { audio.pause(); btn.innerHTML = ICON_PLAY; return; }
-      if (curAudio !== audio) stopAudio();
-      if (!audio) {
-        audio = new Audio(m.src);
-        audio.addEventListener('timeupdate', progress);
-        audio.addEventListener('ended', function () { reset(); if (curAudio === audio) { curAudio = null; curReset = null; } });
-        audio.addEventListener('error', function () { reset(); toast('Паёми овозӣ пахш нашуд'); });
-      }
-      curAudio = audio; curReset = reset;
-      var pr = audio.play(); if (pr && pr.catch) pr.catch(function () { reset(); });
-      btn.innerHTML = ICON_PAUSE;
-    });
-    wave.addEventListener('click', function (e) {
-      if (!audio) return;
-      var r = wave.getBoundingClientRect(), p = (e.clientX - r.left) / r.width;
-      var total = m.dur || audio.duration; if (isFinite(total)) { audio.currentTime = p * total; progress(); }
-    });
-    return wrap;
-  }
-
   function pushMsg(chatId, msg) {
     msgs(chatId).push(msg);
-    if (msg.from === 'them' && chatId !== activeId) state.unread[chatId] = (state.unread[chatId] || 0) + 1;
-    save();
-    if (chatId === activeId) {
-      var stick = msg.from === 'me' || nearBottom();
-      var ph = messagesEl.querySelector('.placeholder'); if (ph) ph.remove();
-      var arr = msgs(chatId), prev = arr.length > 1 ? arr[arr.length - 2] : null;
-      if (!prev || dayKey(prev.ts) !== dayKey(msg.ts)) addDay(msg.ts);
-      messagesEl.appendChild(buildMsg(msg, true));
-      if (stick) scrollDown(false); else newCount++;
-      updateToBottom();
-    }
+    if (chatId === activeId) renderMessages();
     renderList();
   }
 
   function sendCurrent() {
     if (!activeId) return;
-    emojiPanel.classList.remove('show');
     var text = inputEl.value.trim();
-    if (pendingImage) {
-      pushMsg(activeId, { id: uid(), from: 'me', type: 'image', src: pendingImage, text: text, ts: Date.now() });
-      clearPending(); inputEl.value = ''; autoGrow(); updateMainBtn();
-      scheduleReply(activeId, 'image');
-    } else if (text) {
-      pushMsg(activeId, { id: uid(), from: 'me', type: 'text', text: text, ts: Date.now() });
-      inputEl.value = ''; autoGrow(); updateMainBtn();
-      scheduleReply(activeId, 'text');
+    if (text) {
+      pushMsg(activeId, { id: uid(), from: 'me', text: text, ts: Date.now() });
+      inputEl.value = '';
+      
+      // Ҷавоби худкори демо барои санҷиш
+      setTimeout(() => {
+        pushMsg(activeId, { id: uid(), from: 'them', text: 'Паёми шумо қабул шуд: ' + text, ts: Date.now() });
+      }, 1000);
     }
-    if (window.innerWidth > 820) inputEl.focus();
   }
 
+  mainBtn.addEventListener('click', sendCurrent);
   inputEl.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendCurrent(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendCurrent(); }
   });
-  inputEl.addEventListener('input', function () { autoGrow(); updateMainBtn(); });
-  function autoGrow() { inputEl.style.height = 'auto'; inputEl.style.height = Math.min(inputEl.scrollHeight, 130) + 'px'; }
-  function updateMainBtn() {
-    var has = inputEl.value.trim().length > 0 || !!pendingImage;
-    mainBtn.innerHTML = has ? ICON_SEND : ICON_MIC;
-    mainBtn.classList.toggle('is-send', has);
-    mainBtn.setAttribute('aria-label', has ? 'Фиристодан' : 'Сабти паёми овозӣ');
-  }
-  mainBtn.addEventListener('click', function () {
-    if (inputEl.value.trim() || pendingImage) sendCurrent(); else startRec();
-  });
-
-  function scheduleReply(id, kind) {
-    var c = byId(id);
-    if (!c || !c.online || !c.replies.length) return;
-    setTimeout(function () {
-      typing[id] = true; updateStatus(); renderList();
-      setTimeout(function () {
-        typing[id] = false;
-        var text;
-        if (kind === 'image') text = pick(['Акси хеле зебо! 😍', 'Вой, чӣ аксе! 📷', 'Ташаккур барои акс!']);
-        else if (kind === 'voice') text = pick(['Паёми овозиро шунидам 🎧', 'Овози зебо доред! 😊', 'Фаҳмидам, ташаккур!']);
-        else text = pick(c.replies);
-        pushMsg(id, { id: uid(), from: 'them', type: 'text', text: text, ts: Date.now() });
-        updateStatus();
-      }, rand(1100, 2300));
-    }, rand(500, 1100));
-  }
-
-  var fileInput = $('#fileInput');
-  $('#attachBtn').addEventListener('click', function () { fileInput.click(); });
-  fileInput.addEventListener('change', function () {
-    var f = fileInput.files && fileInput.files[0];
-    fileInput.value = '';
-    if (!f) return;
-    if (!/^image\//.test(f.type)) { toast('Лутфан танҳо файли расм интихоб кунед'); return; }
-    var fr = new FileReader();
-    fr.onerror = function () { toast('Акс хонда нашуд'); };
-    fr.onload = function () {
-      var im = new Image();
-      im.onerror = function () { toast('Ин формати акс дастгирӣ намешавад'); };
-      im.onload = function () {
-        var max = 960, w = im.naturalWidth, h = im.naturalHeight, k = Math.min(1, max / Math.max(w, h));
-        var cv = document.createElement('canvas'); cv.width = Math.round(w * k); cv.height = Math.round(h * k);
-        var cx = cv.getContext('2d'); cx.drawImage(im, 0, 0, cv.width, cv.height);
-        pendingImage = cv.toDataURL('image/jpeg', 0.78);
-        $('#prevImg').src = pendingImage;
-        $('#preview').classList.add('show');
-        updateMainBtn();
-        inputEl.focus();
-      };
-      im.src = fr.result;
-    };
-    fr.readAsDataURL(f);
-  });
-  function clearPending() { pendingImage = null; $('#preview').classList.remove('show'); updateMainBtn(); }
-  $('#prevClose').addEventListener('click', clearPending);
-
-  var lb = $('#lightbox');
-  function openLightbox(src) { lb.querySelector('img').src = src; lb.classList.add('show'); }
-  lb.addEventListener('click', function () { lb.classList.remove('show'); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') lb.classList.remove('show'); });
-
-  var recording = false, mr = null, stream = null, chunks = [], cancelled = false;
-  var recStart = 0, recTimer = null, actx = null, analyser = null, raf = null, mimeUsed = '';
-  var recBars = $('#recBars'), recBarEls = [];
-  for (var bi = 0; bi < 26; bi++) { var el = document.createElement('i'); recBars.appendChild(el); recBarEls.push(el); }
-
-  function startRec() {
-    if (!activeId || recording) return;
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
-      toast('Браузери шумо сабти овозро дастгирӣ намекунад'); return;
-    }
-    stopAudio();
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (s) {
-      stream = s; chunks = []; cancelled = false;
-      var types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
-      mimeUsed = '';
-      for (var i = 0; i < types.length; i++) {
-        if (window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(types[i])) { mimeUsed = types[i]; break; }
-      }
-      try { mr = mimeUsed ? new MediaRecorder(stream, { mimeType: mimeUsed }) : new MediaRecorder(stream); }
-      catch (e) { toast('Сабти овоз оғоз нашуд'); releaseStream(); return; }
-      mr.ondataavailable = function (ev) { if (ev.data && ev.data.size) chunks.push(ev.data); };
-      mr.onstop = onRecStop;
-      mr.start();
-      recording = true; recStart = Date.now();
-      composer.classList.add('recording');
-      $('#recTime').textContent = '0:00';
-      recTimer = setInterval(function () { $('#recTime').textContent = fmtDur((Date.now() - recStart) / 1000); }, 250);
-      startViz();
-    }).catch(function () {
-      toast('Барои сабт ба микрофон иҷозат диҳед');
-    });
-  }
-  function startViz() {
-    try {
-      var AC = window.AudioContext || window.webkitAudioContext;
-      actx = new AC();
-      var src = actx.createMediaStreamSource(stream);
-      analyser = actx.createAnalyser(); analyser.fftSize = 128; analyser.smoothingTimeConstant = 0.7;
-      src.connect(analyser);
-      var data = new Uint8Array(analyser.frequencyBinCount);
-      (function loop() {
-        if (!recording) return;
-        analyser.getByteFrequencyData(data);
-        for (var i = 0; i < recBarEls.length; i++) {
-          var v = data[Math.min(data.length - 1, Math.floor(i * 1.3) + 1)] / 255;
-          recBarEls[i].style.height = Math.max(4, Math.round(v * 30)) + 'px';
-        }
-        raf = requestAnimationFrame(loop);
-      })();
-    } catch (e) {
-      var t = 0;
-      (function fake() { if (!recording) return; t += 0.25;
-        recBarEls.forEach(function (el, i) { el.style.height = (6 + Math.abs(Math.sin(t + i * .5)) * 18) + 'px'; });
-        raf = requestAnimationFrame(fake); })();
-    }
-  }
-  function releaseStream() {
-    if (raf) cancelAnimationFrame(raf); raf = null;
-    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
-    if (actx) { try { actx.close(); } catch (e) {} actx = null; }
-    clearInterval(recTimer);
-    composer.classList.remove('recording');
-    recBarEls.forEach(function (el) { el.style.height = '4px'; });
-    recording = false;
-  }
-  function stopRec(send) {
-    if (!recording || !mr) return;
-    cancelled = !send;
-    var d = (Date.now() - recStart) / 1000;
-    recDuration = d;
-    recording = false;
-    try { mr.stop(); } catch (e) { releaseStream(); }
-  }
-  var recDuration = 0;
-  function onRecStop() {
-    var chatId = activeId, dur = recDuration, type = mimeUsed || (chunks[0] && chunks[0].type) || 'audio/webm';
-    releaseStream();
-    if (cancelled) { chunks = []; return; }
-    if (dur < 0.8) { toast('Паём хеле кӯтоҳ аст'); chunks = []; return; }
-    var blob = new Blob(chunks, { type: type }); chunks = [];
-    var fr = new FileReader();
-    fr.onload = function () {
-      if (!chatId) return;
-      pushMsg(chatId, { id: uid(), from: 'me', type: 'voice', src: fr.result, dur: dur, ts: Date.now() });
-      scheduleReply(chatId, 'voice');
-    };
-    fr.readAsDataURL(blob);
-  }
-  function cancelRec() { stopRec(false); }
-  $('#recCancel').addEventListener('click', cancelRec);
-  $('#recSend').addEventListener('click', function () { stopRec(true); });
-
-  var EMOJIS = '😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 😉 😍 🥰 😘 😋 😎 🤩 🥳 🤗 🤔 😐 😴 😢 😭 😡 🤯 😱 🙏 👍 👎 👏 🙌 💪 🤝 ✌️ 👋 ❤️ 💙 💜 🔥 ✨ 🎉 🎁 🌹 🌸 ☀️ 🌙 ⭐ 🚀 💯 ✅ ❌ 🍕 ☕ 🎵'.split(' ');
-  var emojiPanel = $('#emojiPanel');
-  function insertAtCursor(t) {
-    var a = inputEl.selectionStart, b = inputEl.selectionEnd;
-    if (typeof a !== 'number') { a = b = inputEl.value.length; }
-    inputEl.value = inputEl.value.slice(0, a) + t + inputEl.value.slice(b);
-    var pos = a + t.length;
-    if (window.innerWidth > 820) inputEl.focus();
-    try { inputEl.setSelectionRange(pos, pos); } catch (e) {}
-    autoGrow(); updateMainBtn();
-  }
-  EMOJIS.forEach(function (e) {
-    var b = document.createElement('button'); b.type = 'button'; b.textContent = e;
-    b.addEventListener('click', function () { insertAtCursor(e); });
-    emojiPanel.appendChild(b);
-  });
-  $('#emojiBtn').addEventListener('click', function () { emojiPanel.classList.toggle('show'); });
-
-  var toBottom = $('#toBottom'), newBadge = $('#newBadge'), newCount = 0;
-  function nearBottom() { return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 160; }
-  function updateToBottom() {
-    var show = !nearBottom();
-    if (!show) newCount = 0;
-    toBottom.classList.toggle('show', show);
-    newBadge.textContent = newCount > 99 ? '99+' : newCount;
-    newBadge.classList.toggle('on', show && newCount > 0);
-  }
-  messagesEl.addEventListener('scroll', updateToBottom);
-  toBottom.addEventListener('click', function () {
-    newCount = 0;
-    messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: 'smooth' });
-  });
-
-  var menu = $('#msgMenu'), menuStamp = 0, pressTimer = null, pressXY = null;
-  function closeMenu() { menu.classList.remove('show'); }
-  function findMsg(id) { var a = msgs(activeId); for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i]; return null; }
-  function addItem(label, cls, fn) {
-    var b = document.createElement('button'); b.type = 'button'; b.textContent = label; if (cls) b.className = cls;
-    b.addEventListener('click', function () { closeMenu(); fn(); });
-    menu.appendChild(b);
-  }
-  function fallbackCopy(t) {
-    var ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
-    document.body.appendChild(ta); ta.select();
-    var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
-    ta.remove(); toast(ok ? 'Нусха шуд ✓' : 'Нусха нашуд');
-  }
-  function copyText(t) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(t).then(function () { toast('Нусха шуд ✓'); }, function () { fallbackCopy(t); });
-    } else fallbackCopy(t);
-  }
-  function deleteMsg(id, row) {
-    var cid = activeId, arr = msgs(cid), idx = -1;
-    for (var i = 0; i < arr.length; i++) if (arr[i].id === id) { idx = i; break; }
-    if (idx < 0) return;
-    if (arr[idx].type === 'voice') stopAudio();
-    arr.splice(idx, 1); save();
-    row.style.animation = 'msgOut .22s forwards';
-    setTimeout(function () {
-      if (cid === activeId) {
-        var prev = row.previousElementSibling, next = row.nextElementSibling;
-        row.remove();
-        if (prev && prev.classList.contains('day') && (!next || next.classList.contains('day'))) prev.remove();
-        if (!msgs(cid).length) renderMessages();
-        updateToBottom();
-      }
-      renderList();
-    }, 220);
-  }
-  function openMenu(row, x, y, touch) {
-    var m = findMsg(row.dataset.id); if (!m) return;
-    menu.innerHTML = '';
-    if (m.type === 'text' || (m.type === 'image' && m.text)) addItem('📋  Нусха кардан', '', function () { copyText(m.text); });
-    addItem('🗑  Нест кардан', 'danger', function () { deleteMsg(m.id, row); });
-    menu.classList.add('show');
-    var w = menu.offsetWidth, h = menu.offsetHeight;
-    var left = Math.max(8, Math.min(x, window.innerWidth - w - 8));
-    var top = touch ? (y - h - 14 >= 8 ? y - h - 14 : y + 14) : y;
-    top = Math.max(8, Math.min(top, window.innerHeight - h - 8));
-    menu.style.left = left + 'px'; menu.style.top = top + 'px';
-  }
-  messagesEl.addEventListener('contextmenu', function (e) {
-    var row = e.target.closest ? e.target.closest('.row') : null;
-    if (!row) return;
-    e.preventDefault();
-    if (Date.now() - menuStamp < 900) return;
-    openMenu(row, e.clientX, e.clientY, false);
-  });
-  messagesEl.addEventListener('pointerdown', function (e) {
-    if (e.pointerType !== 'touch') return;
-    var row = e.target.closest ? e.target.closest('.row') : null;
-    if (!row) return;
-    pressXY = [e.clientX, e.clientY];
-    clearTimeout(pressTimer);
-    pressTimer = setTimeout(function () {
-      menuStamp = Date.now();
-      openMenu(row, pressXY[0], pressXY[1], true);
-      try { if (navigator.vibrate) navigator.vibrate(15); } catch (_) {}
-    }, 450);
-  });
-  messagesEl.addEventListener('pointermove', function (e) {
-    if (pressXY && (Math.abs(e.clientX - pressXY[0]) > 10 || Math.abs(e.clientY - pressXY[1]) > 10)) clearTimeout(pressTimer);
-  });
-  ['pointerup', 'pointercancel'].forEach(function (ev) { messagesEl.addEventListener(ev, function () { clearTimeout(pressTimer); }); });
-  document.addEventListener('pointerdown', function (e) { if (!menu.contains(e.target)) closeMenu(); });
-  messagesEl.addEventListener('scroll', closeMenu);
-  window.addEventListener('resize', closeMenu);
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeMenu(); emojiPanel.classList.remove('show'); } });
 
   $('#clearBtn').addEventListener('click', function () {
     if (!activeId) return;
-    if (!msgs(activeId).length) { toast('Суҳбат аллакай холӣ аст'); return; }
-    if (!window.confirm('Тамоми суҳбатро тоза кунам?')) return;
-    stopAudio();
-    state.chats[activeId] = []; save();
-    renderMessages(); renderList();
+    state.chats[activeId] = [];
+    renderMessages();
+    renderList();
   });
-
-  window.addEventListener('beforeunload', function () { if (recording) releaseStream(); });
-  document.addEventListener('visibilitychange', function () { if (document.hidden && curAudio) { curAudio.pause(); if (curReset) curReset(); } });
-
-  load();
-  updateMainBtn();
-  startApp();
-})();
 </script>
 </body>
 </html>
